@@ -21,6 +21,55 @@ import sqlite3
 import PIL.Image
 
 
+class PikovError(Exception):
+    pass
+
+
+class NotFound(PikovError):
+    pass
+
+
+class Image(object):
+    """An image.
+
+    Args:
+        key (str): The image identifier.
+        contents (bytes, optional): Image contents (assumed to be PNG).
+    """
+    def __init__(self, key, contents=None):
+        self.key = key
+        self.contents = contents
+
+
+class Frame(object):
+    """An animation frame.
+
+    Args:
+        clip_id (int): The identifier of the clip the frame belongs to.
+        clip_order (int): Where this frame appears within the clip.
+        image (Image): Image content on the frame.
+        duration (datetime.timedelta):
+            Time duration to display the animation frame.
+    """
+    def __init__(self, clip_id, clip_order, image, duration):
+        self.clip_id = clip_id
+        self.clip_order = clip_order
+        self.image = image
+        self.duration = duration
+
+
+class Clip(object):
+    """An animation clip.
+
+    Args:
+        id (int): The clip identifier.
+        frames (List[Frame]): Frames which the clip contains.
+    """
+    def __init__(self, id, frames):
+        self.id = id
+        self.frames = frames
+
+
 class Pikov(object):
     def __init__(self, connection):
         self._connection = connection
@@ -51,6 +100,7 @@ class Pikov(object):
             'CREATE TABLE clip ('
             'id INTEGER PRIMARY KEY)')
         pikov._connection.commit()
+        return pikov
 
     def add_image(self, image):
         """Add an image to the Pikov file.
@@ -79,6 +129,22 @@ class Pikov(object):
             return image_hash, False  # Frame already exists
         return image_hash, True
 
+    def get_image(self, key, include_contents=True):
+        """Add an image to the Pikov file.
+
+        Args:
+            key (str): Content-based key for image file.
+            include_contents (bool, optional):
+                Include content bytes in the fetched image.
+
+        Returns:
+            Image: The image loaded from the Pikov file.
+
+        Raises:
+            NotFound: If image with ``key`` is not found.
+        """
+        raise NotImplementedError()
+
     def add_frame(self, clip_id, clip_order, image_key, duration=None):
         """Add a frame to the Pikov file.
 
@@ -94,7 +160,7 @@ class Pikov(object):
                 100,000 microseconds (10 frames per second).
 
         Returns:
-            Frame: The frame added.
+            Frame: The frame added (does not include image contents).
         """
         if duration is None:
             duration = datetime.timedelta(microseconds=100000)
@@ -107,7 +173,8 @@ class Pikov(object):
                 '(clip_id, clip_order, image_key, duration_microseconds) '
                 'VALUES (?, ?, ?, ?)',
                 (clip_id, clip_order, image_key, duration_microseconds))
-            return cursor.lastrowid
+
+        return Frame(clip_id, clip_order, Image(image_key), duration)
 
     def add_clip(self):
         """Add an animation clip to the Pikov file.
@@ -119,6 +186,30 @@ class Pikov(object):
             cursor = self._connection.cursor()
             cursor.execute('INSERT INTO clip DEFAULT VALUES')
             return cursor.lastrowid
+
+    def get_clip(self, clip_id):
+        """Get the animation clip with a specific ID.
+
+        Args:
+            clip_id (int): Identifier of the animation clip to load.
+
+        Returns:
+            Clip: A clip containing all the clip's frames.
+
+        Raises:
+            NotFound: If clip with ``clip_id`` is not found.
+        """
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT id FROM clip WHERE id = ?', (clip_id,))
+            clip_row = cursor.fetchone()
+
+            if not clip_row:
+                raise NotFound(
+                    'Could not find clip with clip_id "{}"'.format(clip_id))
+
+            return Clip(clip_id, [])
 
 
 def hash_image(image):
