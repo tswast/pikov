@@ -143,7 +143,21 @@ class Pikov(object):
         Raises:
             NotFound: If image with ``key`` is not found.
         """
-        raise NotImplementedError()
+        if include_contents:
+            sql = 'SELECT key, contents FROM image WHERE key = ?'
+        else:
+            sql = 'SELECT key FROM image WHERE key = ?'
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(sql, (key,))
+            image_row = cursor.fetchone()
+
+            if not image_row:
+                raise NotFound(
+                    'Could not find image with key "{}"'.format(key))
+
+        return Image(*image_row)
 
     def add_frame(self, clip_id, clip_order, image_key, duration=None):
         """Add a frame to the Pikov file.
@@ -175,6 +189,12 @@ class Pikov(object):
                 (clip_id, clip_order, image_key, duration_microseconds))
 
         return Frame(clip_id, clip_order, Image(image_key), duration)
+
+    def list_frames(self, clip_id):
+        """Return frames associated with ``clip_id`` in order.
+        """
+        # TODO: actually implement list_frames
+        return []
 
     def add_clip(self):
         """Add an animation clip to the Pikov file.
@@ -209,7 +229,7 @@ class Pikov(object):
                 raise NotFound(
                     'Could not find clip with clip_id "{}"'.format(clip_id))
 
-            return Clip(clip_id, [])
+        return Clip(clip_id, self.list_frames(clip_id))
 
 
 def hash_image(image):
