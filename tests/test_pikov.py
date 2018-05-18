@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import os.path
 
 import pytest
@@ -38,6 +39,12 @@ def pil_image():
     return sheet.crop(box=(0, 0, 8, 8,))
 
 
+@pytest.fixture
+def image_key(pkv, pil_image):
+    key, _ = pkv.add_image(pil_image)
+    return key
+
+
 def test_get_clip_notfound(pkv):
     with pytest.raises(pikov.NotFound):
         pkv.get_clip(999)
@@ -48,6 +55,23 @@ def test_get_clip_no_frames(pkv):
     clip = pkv.get_clip(clip_id)
     assert clip.id == clip_id
     assert len(clip.frames) == 0
+
+
+def test_get_clip_with_frames(pkv, image_key):
+    two_tenths_second = datetime.timedelta(microseconds=200000)
+    clip_id = pkv.add_clip()
+    pkv.add_frame(clip_id, 0, image_key)
+    pkv.add_frame(
+        clip_id, 1, image_key, duration=two_tenths_second)
+    clip = pkv.get_clip(clip_id)
+    assert clip.id == clip_id
+    assert len(clip.frames) == 2
+    assert all([frame.clip_id == clip_id for frame in clip.frames])
+    assert all([frame.image.key == image_key for frame in clip.frames])
+    assert all([frame.image.contents is not None for frame in clip.frames])
+    assert clip.frames[0].clip_order == 0
+    assert clip.frames[1].clip_order == 1
+    assert clip.frames[1].duration == two_tenths_second
 
 
 def test_get_image_notfound(pkv):

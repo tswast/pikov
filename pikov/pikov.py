@@ -163,8 +163,7 @@ class Pikov(object):
         """Add a frame to the Pikov file.
 
         Args:
-            clip_id (int):
-                Clip this frame is a part of.
+            clip_id (int): Clip this frame is a part of.
             clip_order (int):
                 Integer describing the order that frames appear in a clip.
             image_key (str):
@@ -192,9 +191,30 @@ class Pikov(object):
 
     def list_frames(self, clip_id):
         """Return frames associated with ``clip_id`` in order.
+
+        Args:
+            clip_id (int): Clip the frames are a part of.
+
+        Returns:
+            List[Frame]: A list of frames associated with the clip, in order.
         """
-        # TODO: actually implement list_frames
-        return []
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT clip_order, image_key, duration_microseconds '
+                'FROM frame '
+                'WHERE clip_id = ? '
+                'ORDER BY clip_order ASC;',
+                (clip_id,))
+            frame_rows = cursor.fetchall()
+
+        frames = []
+        for row in frame_rows:
+            clip_order, image_key, duration_microseconds = row
+            duration = datetime.timedelta(microseconds=duration_microseconds)
+            image = self.get_image(image_key)
+            frames.append(Frame(clip_id, clip_order, image, duration))
+        return frames
 
     def add_clip(self):
         """Add an animation clip to the Pikov file.
@@ -262,8 +282,7 @@ def import_clip(
 
     # Chop the sprite sheet into frames.
     sheet = PIL.Image.open(sprite_sheet_path)
-    sheet_width, sheet_height = sheet.size
-    rows = sheet_height // frame_height
+    sheet_width, _ = sheet.size
     cols = sheet_width // frame_width
 
     # Add images to Pikov.
