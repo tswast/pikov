@@ -243,9 +243,9 @@ class Frame:
 
     def __add__(self, other):
         if hasattr(other, 'frames'):
-            return MultiClip((self,) + other.frames)
+            return Clip((self,) + other.frames)
         elif isinstance(other, Frame):
-            return MultiClip((self, other))
+            return Clip((self, other))
         else:
             raise TypeError(f'Cannot add Frame and {str(type(other))}')
 
@@ -295,13 +295,22 @@ class Frame:
         return data
 
 
-class BaseClip:
+class Clip:
     """An animation clip, which is a collection of frames."""
+
+    def __init__(self, frames, is_loop=False):
+        self._frames = tuple(frames)
+        self._is_loop = is_loop
 
     @property
     def frames(self) -> typing.Tuple[Frame, ...]:
-        """Collection[Frame]: A collection of frames in this clip."""
-        raise NotImplementedError()
+        """Tuple[Frame, ...]: A collection of frames in this clip."""
+        return self._frames
+
+    @property
+    def is_loop(self) -> bool:
+        """Does the clip loop on itself?"""
+        return self._is_loop
 
     def save_gif(self, fp):
         """Save this clip as a GIF to file pointer ``fp``."""
@@ -317,9 +326,35 @@ class BaseClip:
 
         imgs[0].save(
             fp, format='gif', save_all=True, append_images=imgs[1:],
-            duration=durations, loop=0)
+            duration=durations,
+            # Always loop since this the GIF is used to preview the clip.
+            loop=0)
 
-    def transition_to(self, target: 'BaseClip') -> 'Transition':
+    def add_missing_transitions(self) -> typing.Collection['Transition']:
+        """Add missing transitions between consecutive frames in the clip.
+
+        TODO: Only add missing transitions. Method currently adds all
+        transitions.
+
+        Returns:
+            Collection[Transition]: Any transitions that were added.
+        """
+        added_transitions = []
+
+        previous_frame = self.frames[0]
+        for frame in self.frames[1:]:
+            # TODO: Transition only if the transition isn't already present.
+            transition = previous_frame.transition_to(frame)
+            added_transitions.append(transition)
+            previous_frame = frame
+
+        if self.is_loop:  # TODO: And there isn't a transition already.
+            transition = self.frames[-1].transition_to(self.frames[0])
+            added_transitions.append(transition)
+
+        return added_transitions
+
+    def transition_to(self, target: 'Clip') -> 'Transition':
         """Add a transition from this clip to the beginning of a target clip.
 
         Arguments:
@@ -334,11 +369,11 @@ class BaseClip:
 
     def __add__(self, other):
         if hasattr(other, 'frames'):
-            return MultiClip(self.frames + other.frames)
+            return Clip(self.frames + other.frames)
         elif isinstance(other, Frame):
-            return MultiClip(self.frames + (other,))
+            return Clip(self.frames + (other,))
         else:
-            raise TypeError(f'Cannot add BaseClip and {str(type(other))}')
+            raise TypeError(f'Cannot add Clip and {str(type(other))}')
 
     def _as_gif(self) -> typing.Optional[bytes]:
         """Write a sequence of frames to a GIF (requires Pillow).
@@ -367,29 +402,18 @@ class BaseClip:
             f'style="width: 5em; {PIXEL_ART_CSS}">'
         )
 
-
-class MultiClip(BaseClip):
-    """A sequence of clips."""
-
-    def __init__(self, frames):
-        self._frames = tuple(frames)
-
-    @property
-    def frames(self):
-        return self._frames
-
     def _as_html(self):
         frames_repr = '<br>'.join((repr(frame) for frame in self._frames))
         return (
             '<table>'
-            f'<tr><th>MultiClip</th><th></th></tr>'
+            f'<tr><th>Clip</th><th></th></tr>'
             f'<tr><td>frames</td><td>{frames_repr}</td></tr>'
             f'<tr><td>preview</td><td>{self._as_img()}</td></tr>'
             '</table>'
         )
 
     def __repr__(self):
-        return f"MultiClip(frames={repr(self._frames)}')"
+        return f"Clip(frames={repr(self._frames)}')"
 
     def _repr_mimebundle_(self, include=None, exclude=None, **kwargs):
         data = {}
@@ -467,7 +491,7 @@ class Transition:
                 (self._id,))
             self._deleted = True
 
-    def _as_clip(self) -> MultiClip:
+    def _as_clip(self) -> Clip:
         current_frame = self.source.clip.frames[0]
 
         # Add all frames up to the current frame from the source clip.
@@ -484,7 +508,7 @@ class Transition:
             frames.append(current_frame)
             current_frame = current_frame.next
 
-        return MultiClip(frames)
+        return Clip(frames)
 
     def _as_gif(self) -> typing.Optional[bytes]:
         return self._as_clip()._as_gif()
@@ -562,6 +586,13 @@ class Pikov:
             'duration_microseconds INTEGER, '
             'properties TEXT, '
             'FOREIGN KEY(image_key) REFERENCES image(key));')
+        cursor.execute(
+            'CREATE TABLE clip ('
+            'clip_id TEXT, '
+            'clip_order INTEGER, '
+            'frame_id INTEGER, '
+            'FOREIGN KEY(frame_id) REFERENCES frame(id), '
+            'PRIMARY KEY (clip_id, clip_order));')
         cursor.execute(
             'CREATE TABLE pikov ('
             'id STRING PRIMARY KEY, '
@@ -764,7 +795,7 @@ class Pikov:
             if total_duration + next_frame.duration > max_duration:
                 break
 
-        return MultiClip(frames=preview_frames)
+        return Clip(frames=preview_frames)
 
     def save_gif(
             self,
@@ -937,22 +968,26 @@ def import_clip(
 
     # Create clip
     start_frame = None
-    previous_frame = None
+    clip_frames = []
     for spritesheet_frame in frames:
         image_key, original_image = images[spritesheet_frame]
         frame = pkv.add_frame(image_key, duration=duration)
         frame.set_property('originalImage', original_image)
         frame.set_property('clipId', clip_id)
-        if previous_frame is not None:
-            previous_frame.transition_to(frame)
-        else:
+        if start_frame is None:
             start_frame = frame
-        previous_frame = frame
+        clip_frames.append(frame)
+
+    clip = Clip(clip_frames)  # TODO: is_loop?
+    transitions = clip.add_missing_transitions()
+    # TODO: pkv.add_clip(clip_id, clip)
 
     print('Added {} of {} images ({} duplicates)'.format(
         added, len(frames_set), duplicates))
-    print('Created clip {} starting at frame {} with {} frames.'.format(
-        clip_id, start_frame.id, len(frames)))
+    print((
+        'Created clip {} starting at frame {} with {} frames and {} '
+        'transitions.').format(
+            clip_id, start_frame.id, len(frames), len(transitions)))
 
 
 def create(pikov_path):

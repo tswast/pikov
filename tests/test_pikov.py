@@ -49,7 +49,7 @@ def create_clip(pkv, pil_images):
         frames.append(current_frame)
         previous_frame = current_frame
 
-    return pikov.MultiClip(frames)
+    return pikov.Clip(frames)
 
 
 @pytest.fixture
@@ -172,41 +172,41 @@ def test_get_frame(pkv, frame):
     assert got.image.contents is not None
 
 
-# MultiClip
+# Clip
 def test_add_frames(pkv, frame):
-    multi_clip = frame + frame
-    assert len(multi_clip.frames) == 2
+    clip = frame + frame
+    assert len(clip.frames) == 2
 
 
 def test_add_clip_with_frame(pkv, clip_with_frames, frame):
-    multi_clip = clip_with_frames + frame
-    assert len(multi_clip.frames) == len(clip_with_frames.frames) + 1
+    clip = clip_with_frames + frame
+    assert len(clip.frames) == len(clip_with_frames.frames) + 1
 
-    multi_clip = frame + clip_with_frames
-    assert len(multi_clip.frames) == len(clip_with_frames.frames) + 1
+    clip = frame + clip_with_frames
+    assert len(clip.frames) == len(clip_with_frames.frames) + 1
 
-    multi_clip_added = multi_clip + frame
-    assert len(multi_clip_added.frames) == len(multi_clip.frames) + 1
+    clip_added = clip + frame
+    assert len(clip_added.frames) == len(clip.frames) + 1
 
-    multi_clip_added = frame + multi_clip
-    assert len(multi_clip_added.frames) == len(multi_clip.frames) + 1
+    clip_added = frame + clip
+    assert len(clip_added.frames) == len(clip.frames) + 1
 
 
 def test_add_clips(pkv, clip_with_frames):
-    multi_clip = clip_with_frames + clip_with_frames
-    assert len(multi_clip.frames) == 2 * len(clip_with_frames.frames)
+    clip = clip_with_frames + clip_with_frames
+    assert len(clip.frames) == 2 * len(clip_with_frames.frames)
 
-    multi_added = multi_clip + clip_with_frames
+    multi_added = clip + clip_with_frames
     expected_multi_added_len = (
-        len(multi_clip.frames) + len(clip_with_frames.frames)
+        len(clip.frames) + len(clip_with_frames.frames)
     )
     assert len(multi_added.frames) == expected_multi_added_len
 
-    multi_added = clip_with_frames + multi_clip
+    multi_added = clip_with_frames + clip
     assert len(multi_added.frames) == expected_multi_added_len
 
-    double_multi = multi_clip + multi_clip
-    assert len(double_multi.frames) == 2 * len(multi_clip.frames)
+    double_multi = clip + clip
+    assert len(double_multi.frames) == 2 * len(clip.frames)
 
 
 # Pikov
