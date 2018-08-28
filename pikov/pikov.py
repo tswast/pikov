@@ -319,14 +319,24 @@ class Clip:
 
         imgs = []
         durations = []
+        previous_image = None
         for frame in self.frames:
+            duration = frame.duration.total_seconds() * 1000
+
+            # Increase the duration if the image is the same as the previous.
+            if previous_image == frame.image.key:
+                durations[-1] = durations[-1] + duration
+                continue
+
+            # New image, add it to the list.
+            previous_image = frame.image.key
             img_file = io.BytesIO(frame.image.contents)
             imgs.append(PIL.Image.open(img_file))
-            durations.append(frame.duration.total_seconds() * 1000)
+            durations.append(duration)
 
         imgs[0].save(
-            fp, format='gif', save_all=True, append_images=imgs[1:],
-            duration=durations,
+            fp, format='gif', save_all=(len(imgs) > 1), append_images=imgs[1:],
+            duration=durations if len(durations) > 1 else durations[0],
             # Always loop since this the GIF is used to preview the clip.
             loop=0)
 
@@ -403,7 +413,7 @@ class Clip:
         )
 
     def _as_html(self):
-        frames_repr = '<br>'.join((repr(frame) for frame in self._frames))
+        frames_repr = ', '.join((repr(frame) for frame in self._frames))
         return (
             '<table>'
             f'<tr><th>Clip</th><th></th></tr>'
@@ -492,23 +502,7 @@ class Transition:
             self._deleted = True
 
     def _as_clip(self) -> Clip:
-        current_frame = self.source.clip.frames[0]
-
-        # Add all frames up to the current frame from the source clip.
-        frames = []
-        while current_frame != self.source:
-            frames.append(current_frame)
-            current_frame = current_frame.next
-
-        frames.append(self.source)
-        current_frame = self.target
-
-        # Add all frames until the end of the target clip.
-        while current_frame is not None:
-            frames.append(current_frame)
-            current_frame = current_frame.next
-
-        return Clip(frames)
+        return Clip((self.source, self.target))
 
     def _as_gif(self) -> typing.Optional[bytes]:
         return self._as_clip()._as_gif()
@@ -586,13 +580,6 @@ class Pikov:
             'duration_microseconds INTEGER, '
             'properties TEXT, '
             'FOREIGN KEY(image_key) REFERENCES image(key));')
-        cursor.execute(
-            'CREATE TABLE clip ('
-            'clip_id TEXT, '
-            'clip_order INTEGER, '
-            'frame_id INTEGER, '
-            'FOREIGN KEY(frame_id) REFERENCES frame(id), '
-            'PRIMARY KEY (clip_id, clip_order));')
         cursor.execute(
             'CREATE TABLE pikov ('
             'id STRING PRIMARY KEY, '
@@ -980,7 +967,6 @@ def import_clip(
 
     clip = Clip(clip_frames)  # TODO: is_loop?
     transitions = clip.add_missing_transitions()
-    # TODO: pkv.add_clip(clip_id, clip)
 
     print('Added {} of {} images ({} duplicates)'.format(
         added, len(frames_set), duplicates))
