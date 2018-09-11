@@ -34,6 +34,8 @@ except ImportError:
     networkx = None
 
 
+DEFAULT_ODDS = 1.0
+
 PIXEL_ART_CSS = (
     'image-rendering: -moz-crisp-edges; '
     'image-rendering: crisp-edges; '
@@ -240,14 +242,15 @@ class Frame:
                 cursor.execute('ROLLBACK')
                 raise
 
-    def transition_to(self, target: 'Frame') -> 'Transition':
+    def transition_to(
+            self, target: 'Frame', odds: float=DEFAULT_ODDS) -> 'Transition':
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
                 'INSERT INTO transition '
-                '(source_frame_id, target_frame_id) '
-                'VALUES (?, ?);',
-                (self.id, target.id))
+                '(source_frame_id, target_frame_id, odds) '
+                'VALUES (?, ?, ?);',
+                (self.id, target.id, odds))
             return Transition(self._connection, cursor.lastrowid)
 
     def __add__(self, other):
@@ -376,7 +379,10 @@ class Clip:
 
         return added_transitions
 
-    def transition_to(self, target: 'Clip') -> 'Transition':
+    def transition_to(
+            self,
+            target: 'Clip',
+            odds=DEFAULT_ODDS) -> 'Transition':
         """Add a transition from this clip to the beginning of a target clip.
 
         Arguments:
@@ -469,6 +475,22 @@ class Transition:
         return self._id
 
     @property
+    def odds(self) -> float:
+        if self._deleted:
+            raise ValueError('Cannot fetch odds on deleted transition.')
+
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'SELECT odds FROM transition WHERE id = ?;',
+                (self._id,))
+            row = cursor.fetchone()
+            odds = row[0]
+            if odds is None:
+                return DEFAULT_ODDS
+            return odds
+
+    @property
     def source(self) -> Frame:
         if self._deleted:
             raise ValueError('Cannot fetch source on deleted transition.')
@@ -533,6 +555,7 @@ class Transition:
             f'<tr><td>source.image</td><td>{source_img}</td></tr>'
             f'<tr><td>target.id</td><td>{self.target.id}</td></tr>'
             f'<tr><td>target.image</td><td>{target_img}</td></tr>'
+            f'<tr><td>odds</td><td>{self.odds}</td></tr>'
             f'<tr><td>preview</td><td>{self._to_img()}</td></tr>'
             '</table>'
         )

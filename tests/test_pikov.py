@@ -250,6 +250,20 @@ def test_frame_transition_to(pkv, clip_with_frames, clip_2):
 
     assert transition.source == source_frame
     assert transition.target == target_frame
+    assert abs(transition.odds - pikov.DEFAULT_ODDS) < 0.001
+
+
+def test_frame_transition_to_with_odds(pkv, clip_with_frames, clip_2):
+    source_frame = clip_with_frames.frames[-1]
+    assert source_frame is not None
+    target_frame = clip_2.frames[0]
+    assert target_frame is not None
+
+    transition = source_frame.transition_to(target_frame, odds=2.0)
+
+    assert transition.source == source_frame
+    assert transition.target == target_frame
+    assert abs(transition.odds - 2.0) < 0.001
 
 
 def test_frame_transitions(pkv, clip_with_frames, clip_2):
