@@ -602,7 +602,7 @@ class Pikov:
             'id INTEGER PRIMARY KEY, '
             'source_frame_id TEXT, '
             'target_frame_id TEXT, '
-            # TODO: add weights (inversely proportional to probabilities)
+            'odds REAL, '
             'FOREIGN KEY(source_frame_id) REFERENCES frame(id), '
             'FOREIGN KEY(target_frame_id) REFERENCES frame(id));')
         cursor.execute('INSERT INTO pikov (id) VALUES (1);')
