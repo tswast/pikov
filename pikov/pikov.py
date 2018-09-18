@@ -490,6 +490,15 @@ class Transition:
                 return DEFAULT_ODDS
             return odds
 
+    @odds.setter
+    def odds(self, value: float):
+        with self._connection:
+            cursor = self._connection.cursor()
+            cursor.execute(
+                'UPDATE transition SET odds = ? WHERE id = ?',
+                (value, self._id,),
+            )
+
     @property
     def source(self) -> Frame:
         if self._deleted:

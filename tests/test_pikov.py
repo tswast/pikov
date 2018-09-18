@@ -304,6 +304,16 @@ def test_transition_delete_does_delete(transition):
     assert len(source.transitions) == before_len - 1
 
 
+def test_transition_sets_odds(pkv, clip_with_frames, clip_2):
+    source_frame = clip_with_frames.frames[-1]
+    target_frame = clip_2.frames[0]
+    transition = source_frame.transition_to(target_frame)
+    assert abs(transition.odds - pikov.DEFAULT_ODDS) < 0.001
+
+    transition.odds = 2.25
+    assert abs(transition.odds - 2.25) < 0.001
+
+
 def test_transition_operations_raise_on_deleted(transition):
     transition.delete()
 
